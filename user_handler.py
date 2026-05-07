@@ -150,8 +150,8 @@ async def contact_info(msg: Message, state: FSMContext):
     await state.clear()
     await msg.answer(
         "📞 <b>Bog'lanish ma'lumotlari:</b>\n\n"
-        "👨‍💼 Admin: @admin_username\n"
-        "📱 Telefon: +998 90 000 00 00\n"
+        "👨‍💼 Admin: @jasurdv\n"
+        "📱 Telefon: +998 95 182 22 23\n"
         "🕐 Ish vaqti: 09:00 - 22:00",
         parse_mode="HTML"
     )

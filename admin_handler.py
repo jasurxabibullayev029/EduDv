@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 from datetime import datetime, timedelta
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
@@ -18,7 +19,8 @@ from database import (
     get_all_users, get_user, delete_user, ban_user, unban_user,
     get_user_courses, activate_user_course, deactivate_user_course,
     get_payment, update_payment_status, activate_user_course,
-    get_pending_payments, get_today_revenue, get_monthly_revenue, get_total_users
+    get_pending_payments, get_today_revenue, get_monthly_revenue, get_total_users,
+    create_course, delete_course, update_course_price, get_course_price
 )
 from config import COURSES, ADMIN_ID
 
@@ -39,6 +41,17 @@ async def safe_edit_message(message, text, reply_markup=None, parse_mode=None):
         )
     except:
         pass
+
+
+def _normalize_price(price_text: str) -> str:
+    cleaned = price_text.strip()
+    if not cleaned:
+        return cleaned
+    if "so'm" not in cleaned:
+        cleaned = f"{cleaned} so'm"
+    if "/oy" not in cleaned:
+        cleaned = f"{cleaned}/oy"
+    return cleaned
 
 
 # ─── ADMIN LOGIN ──────────────────────────────────────────────────────────────
@@ -381,10 +394,173 @@ async def admin_course_detail(cb: CallbackQuery):
         await cb.answer("Kurs topilmadi!")
         return
 
+    current_price = await get_course_price(course_key)
+    fallback_price = "Noma'lum"
     await cb.message.edit_text(
-        f"📚 <b>{course['name']}</b>\n\nNima qilmoqchisiz?",
+        f"📚 <b>{course['name']}</b>\n"
+        f"💰 Narx: <b>{current_price or fallback_price}</b>\n\n"
+        f"Nima qilmoqchisiz?",
         parse_mode="HTML",
         reply_markup=admin_course_manage_keyboard(course_key)
+    )
+
+
+@admin_router.callback_query(F.data == "admin_add_course")
+async def admin_add_course_start(cb: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await state.set_state(AdminStates.waiting_course_key)
+    await cb.message.edit_text(
+        "➕ <b>Yangi kurs qo'shish</b>\n\n"
+        "1-qadam: kurs kalitini kiriting.\n"
+        "<i>Masalan: data_science</i>",
+        parse_mode="HTML"
+    )
+
+
+@admin_router.message(AdminStates.waiting_course_key)
+async def admin_receive_course_key(msg: Message, state: FSMContext):
+    raw_key = msg.text.strip().lower().replace(" ", "_")
+    course_key = re.sub(r"[^a-z0-9_]", "", raw_key)
+    if not course_key or len(course_key) < 2:
+        await msg.answer("❗ Kalit noto'g'ri. Faqat a-z, 0-9 va _ ishlating.")
+        return
+    if course_key in COURSES:
+        await msg.answer("❗ Bu kalit allaqachon mavjud. Boshqa kalit kiriting.")
+        return
+
+    await state.update_data(new_course_key=course_key)
+    await state.set_state(AdminStates.waiting_course_name)
+    await msg.answer("2-qadam: kurs nomini kiriting.\nMasalan: 📊 Data Science")
+
+
+@admin_router.message(AdminStates.waiting_course_name)
+async def admin_receive_course_name(msg: Message, state: FSMContext):
+    name = msg.text.strip()
+    if len(name) < 3:
+        await msg.answer("❗ Kurs nomi juda qisqa. Qayta kiriting.")
+        return
+    await state.update_data(new_course_name=name)
+    await state.set_state(AdminStates.waiting_course_description)
+    await msg.answer("3-qadam: kurs tavsifini yuboring.")
+
+
+@admin_router.message(AdminStates.waiting_course_description)
+async def admin_receive_course_description(msg: Message, state: FSMContext):
+    description = msg.text.strip()
+    if len(description) < 10:
+        await msg.answer("❗ Tavsif juda qisqa. Batafsilroq yozing.")
+        return
+    await state.update_data(new_course_description=description)
+    await state.set_state(AdminStates.waiting_course_price)
+    await msg.answer("4-qadam: kurs narxini kiriting.\nMasalan: 250,000 so'm/oy")
+
+
+@admin_router.message(AdminStates.waiting_course_price)
+async def admin_receive_course_price(msg: Message, state: FSMContext):
+    price = _normalize_price(msg.text)
+    if not price:
+        await msg.answer("❗ Narxni kiriting.")
+        return
+
+    data = await state.get_data()
+    course_key = data.get("new_course_key")
+    course_name = data.get("new_course_name")
+    description = data.get("new_course_description", "")
+    full_description = (
+        description
+        if "💰 Narxi:" in description
+        else f"{description}\n\n💰 Narxi: {price}"
+    )
+
+    try:
+        await create_course(course_key, course_name, full_description, price)
+    except Exception as e:
+        logger.error(f"Kurs yaratishda xatolik: {e}")
+        await msg.answer("❌ Kurs yaratishda xatolik bo'ldi.")
+        await state.clear()
+        return
+
+    await state.clear()
+    await msg.answer(
+        f"✅ <b>Yangi kurs qo'shildi!</b>\n\n"
+        f"🔑 Kalit: <code>{course_key}</code>\n"
+        f"📚 Nomi: <b>{course_name}</b>\n"
+        f"💰 Narx: <b>{price}</b>",
+        parse_mode="HTML",
+        reply_markup=admin_courses_keyboard()
+    )
+
+
+@admin_router.callback_query(F.data.startswith("courseprice_"))
+async def admin_change_course_price_start(cb: CallbackQuery, state: FSMContext):
+    course_key = cb.data.split("_", 1)[1]
+    if course_key not in COURSES:
+        await cb.answer("Kurs topilmadi!")
+        return
+    await state.clear()
+    await state.update_data(edit_course_key=course_key)
+    await state.set_state(AdminStates.waiting_new_course_price)
+    current_price = await get_course_price(course_key)
+    fallback_price = "Noma'lum"
+    await cb.message.edit_text(
+        f"💰 <b>{COURSES[course_key]['name']}</b>\n\n"
+        f"Joriy narx: <b>{current_price or fallback_price}</b>\n"
+        f"Yangi narxni kiriting:",
+        parse_mode="HTML"
+    )
+
+
+@admin_router.message(AdminStates.waiting_new_course_price)
+async def admin_change_course_price_save(msg: Message, state: FSMContext):
+    price = _normalize_price(msg.text)
+    if not price:
+        await msg.answer("❗ Narxni to'g'ri kiriting.")
+        return
+
+    data = await state.get_data()
+    course_key = data.get("edit_course_key")
+    if not course_key or course_key not in COURSES:
+        await state.clear()
+        await msg.answer("❌ Kurs topilmadi.")
+        return
+
+    await update_course_price(course_key, price)
+
+    description = COURSES[course_key].get("description", "")
+    if "💰 Narxi:" in description:
+        new_lines = []
+        for line in description.split('\n'):
+            if "💰 Narxi:" in line:
+                new_lines.append(f"💰 Narxi: {price}")
+            else:
+                new_lines.append(line)
+        COURSES[course_key]["description"] = "\n".join(new_lines)
+    else:
+        COURSES[course_key]["description"] = f"{description}\n\n💰 Narxi: {price}".strip()
+
+    await state.clear()
+    await msg.answer(
+        f"✅ <b>{COURSES[course_key]['name']}</b> narxi yangilandi: <b>{price}</b>",
+        parse_mode="HTML",
+        reply_markup=admin_course_manage_keyboard(course_key)
+    )
+
+
+@admin_router.callback_query(F.data.startswith("delcourse_"))
+async def admin_delete_course(cb: CallbackQuery):
+    course_key = cb.data.split("_", 1)[1]
+    course = COURSES.get(course_key)
+    if not course:
+        await cb.answer("Kurs topilmadi!")
+        return
+
+    course_name = course["name"]
+    await delete_course(course_key)
+    await cb.answer("🗑 Kurs o'chirildi!")
+    await cb.message.edit_text(
+        f"🗑 <b>{course_name}</b> kursi o'chirildi.",
+        parse_mode="HTML",
+        reply_markup=admin_courses_keyboard()
     )
 
 

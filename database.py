@@ -7,6 +7,13 @@ DB_PATH = "edubot.db"
 logger = logging.getLogger(__name__)
 
 
+def _extract_price_from_description(description: str) -> str:
+    for line in description.split('\n'):
+        if '💰 Narxi:' in line:
+            return line.split('💰 Narxi:')[1].strip()
+    return "50,000 so'm/oy"
+
+
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -67,6 +74,31 @@ async def init_db():
         await db.execute("""
             INSERT OR IGNORE INTO admin_state (id, password) VALUES (1, 'vfx.jasur')
         """)
+        for course_key, course_data in COURSES.items():
+            await db.execute(
+                "INSERT OR IGNORE INTO courses (key, name, description, price) VALUES (?, ?, ?, ?)",
+                (
+                    course_key,
+                    course_data.get('name', course_key),
+                    course_data.get('description', ''),
+                    _extract_price_from_description(course_data.get('description', '')),
+                )
+            )
+
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT key, name, description, price FROM courses WHERE is_active=1") as cur:
+            rows = await cur.fetchall()
+        if rows:
+            COURSES.clear()
+            for row in rows:
+                price = row["price"] or "50,000 so'm/oy"
+                desc = row["description"] or ""
+                if "💰 Narxi:" not in desc:
+                    desc = f"{desc}\n\n💰 Narxi: {price}" if desc else f"💰 Narxi: {price}"
+                COURSES[row["key"]] = {
+                    "name": row["name"] or row["key"],
+                    "description": desc
+                }
         await db.commit()
     logger.info("Ma'lumotlar bazasi tayyor ✅")
 
@@ -201,12 +233,11 @@ async def get_monthly_revenue():
 
 
 async def update_course_price(course_key: str, price: str):
-    """Update course price in database"""
+    """Update only course price."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT OR REPLACE INTO courses (key, name, description, price) VALUES (?, ?, ?, ?)",
-            (course_key, COURSES.get(course_key, {}).get('name', course_key), 
-             COURSES.get(course_key, {}).get('description', ''), price)
+            "UPDATE courses SET price=? WHERE key=?",
+            (price, course_key)
         )
         await db.commit()
 
@@ -243,7 +274,7 @@ async def sync_courses_to_db():
 
 
 async def create_course(course_key: str, name: str, description: str, price: str):
-    """Create new course in database and config"""
+    """Create new course in database and memory config."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT INTO courses (key, name, description, price) VALUES (?, ?, ?, ?)",
@@ -258,8 +289,10 @@ async def create_course(course_key: str, name: str, description: str, price: str
 
 
 async def delete_course(course_key: str):
-    """Delete course from database and config"""
+    """Delete course and related links from DB and memory config."""
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM user_courses WHERE course_key=?", (course_key,))
+        await db.execute("DELETE FROM payments WHERE course_key=?", (course_key,))
         await db.execute("DELETE FROM courses WHERE key=?", (course_key,))
         await db.commit()
     
@@ -271,7 +304,7 @@ async def get_all_courses_from_db():
     """Get all courses from database"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM courses") as cur:
+        async with db.execute("SELECT * FROM courses ORDER BY rowid DESC") as cur:
             return await cur.fetchall()
 
 

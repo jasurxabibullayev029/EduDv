@@ -116,6 +116,7 @@ def admin_user_courses_keyboard(user_id: int, user_courses: list):
 
 def admin_courses_keyboard():
     builder = InlineKeyboardBuilder()
+    builder.button(text="➕ Yangi kurs qo'shish", callback_data="admin_add_course")
     for key, course in COURSES.items():
         builder.button(text=course["name"], callback_data=f"admincourse_{key}")
     builder.button(text="🔙 Admin panel", callback_data="admin_back")
@@ -125,8 +126,10 @@ def admin_courses_keyboard():
 
 def admin_course_manage_keyboard(course_key: str):
     builder = InlineKeyboardBuilder()
+    builder.button(text="💰 Narxni o'zgartirish", callback_data=f"courseprice_{course_key}")
     builder.button(text="🎬 Video qo'shish", callback_data=f"addvideo_{course_key}")
     builder.button(text="📋 Videolarni boshqarish", callback_data=f"listvideos_{course_key}")
+    builder.button(text="🗑 Kursni o'chirish", callback_data=f"delcourse_{course_key}")
     builder.button(text="🔙 Orqaga", callback_data="admin_courses")
     builder.adjust(1)
     return builder.as_markup()
