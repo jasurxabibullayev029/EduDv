@@ -11,6 +11,8 @@ from config import COURSES, CARD_NUMBER, CARD_OWNER, ADMIN_ID
 logger = logging.getLogger(__name__)
 payment_router = Router()
 
+PAYMENT_EXIT_TEXTS = {"/start", "📚 Kurslar", "👤 Mening profilim", "📞 Bog'lanish"}
+
 
 @payment_router.callback_query(F.data.startswith("buy_"))
 async def buy_course(cb: CallbackQuery, state: FSMContext):
@@ -119,7 +121,7 @@ async def receive_check(msg: Message, state: FSMContext, bot: Bot):
     )
 
 
-@payment_router.message(PaymentStates.waiting_check)
+@payment_router.message(PaymentStates.waiting_check, ~F.text.in_(PAYMENT_EXIT_TEXTS))
 async def wrong_check_format(msg: Message):
     await msg.answer(
         "❗ Iltimos, to'lov chekini <b>rasm (screenshot)</b> ko'rinishida yuboring!\n\n"

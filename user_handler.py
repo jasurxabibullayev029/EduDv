@@ -104,7 +104,8 @@ async def reg_phone_text(msg: Message):
 # ─── MAIN MENU ────────────────────────────────────────────────────────────────
 
 @user_router.message(F.text == "📚 Kurslar")
-async def courses_menu(msg: Message):
+async def courses_menu(msg: Message, state: FSMContext):
+    await state.clear()
     user = await get_user(msg.from_user.id)
     if not user:
         await msg.answer("❗ Avval ro'yxatdan o'ting. /start")
@@ -121,7 +122,8 @@ async def courses_menu(msg: Message):
 
 
 @user_router.message(F.text == "👤 Mening profilim")
-async def my_profile(msg: Message):
+async def my_profile(msg: Message, state: FSMContext):
+    await state.clear()
     user = await get_user(msg.from_user.id)
     if not user:
         await msg.answer("❗ Avval ro'yxatdan o'ting. /start")
@@ -144,7 +146,8 @@ async def my_profile(msg: Message):
 
 
 @user_router.message(F.text == "📞 Bog'lanish")
-async def contact_info(msg: Message):
+async def contact_info(msg: Message, state: FSMContext):
+    await state.clear()
     await msg.answer(
         "📞 <b>Bog'lanish ma'lumotlari:</b>\n\n"
         "👨‍💼 Admin: @admin_username\n"
@@ -157,7 +160,8 @@ async def contact_info(msg: Message):
 # ─── COURSE CALLBACKS ─────────────────────────────────────────────────────────
 
 @user_router.callback_query(F.data == "back_courses")
-async def back_to_courses(cb: CallbackQuery):
+async def back_to_courses(cb: CallbackQuery, state: FSMContext):
+    await state.clear()
     await cb.message.edit_text(
         "📚 <b>Bizning kurslar:</b>\n\nQuyidagilardan birini tanlang:",
         parse_mode="HTML",
