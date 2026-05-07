@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from states import RegisterStates
 from keyboards import (
     main_menu_keyboard, phone_keyboard, courses_keyboard,
-    course_actions_keyboard, back_to_courses_keyboard
+    course_actions_keyboard, back_to_courses_keyboard, course_videos_keyboard
 )
 from database import get_user, create_user, get_user_courses, has_active_course, get_course_videos
 from config import COURSES
@@ -219,20 +219,48 @@ async def watch_course_videos(cb: CallbackQuery):
         await cb.answer("Hozircha videolar qo'shilmagan.", show_alert=True)
         return
 
-    await cb.message.answer(
+    await cb.message.edit_text(
         f"🎬 <b>{COURSES[course_key]['name']}</b>\n"
         f"Jami darslar: <b>{len(videos)} ta</b>\n\n"
-        f"Videolar yuborilmoqda...",
-        parse_mode="HTML"
+        f"Ko'rmoqchi bo'lgan qismni tanlang:",
+        parse_mode="HTML",
+        reply_markup=course_videos_keyboard(course_key, videos)
     )
 
-    for idx, video in enumerate(videos, start=1):
-        file_id = video.get("file_id")
-        if not file_id:
-            continue
-        title = video.get("title", f"Dars {idx}")
-        await cb.message.answer_video(
-            video=file_id,
-            caption=f"📘 <b>{title}</b>\nDars {idx}/{len(videos)}",
-            parse_mode="HTML"
-        )
+
+@user_router.callback_query(F.data.startswith("watchpart_"))
+async def watch_course_video_part(cb: CallbackQuery):
+    payload = cb.data[len("watchpart_"):]
+    try:
+        course_key, idx_str = payload.rsplit("_", 1)
+        video_index = int(idx_str)
+    except ValueError:
+        await cb.answer("Xatolik yuz berdi.")
+        return
+
+    if course_key not in COURSES:
+        await cb.answer("Kurs topilmadi!")
+        return
+
+    if not await has_active_course(cb.from_user.id, course_key):
+        await cb.answer("❗ Avval kursni sotib oling.", show_alert=True)
+        return
+
+    videos = await get_course_videos(course_key)
+    if video_index < 0 or video_index >= len(videos):
+        await cb.answer("Qism topilmadi!")
+        return
+
+    selected = videos[video_index]
+    file_id = selected.get("file_id")
+    if not file_id:
+        await cb.answer("Video fayli topilmadi.")
+        return
+
+    title = selected.get("title", f"Dars {video_index + 1}")
+    await cb.message.answer_video(
+        video=file_id,
+        caption=f"📘 <b>{title}</b>\nQism: {video_index + 1}/{len(videos)}",
+        parse_mode="HTML"
+    )
+    await cb.answer()
