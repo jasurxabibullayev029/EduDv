@@ -5,7 +5,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from database import init_db
-from handlers import user_router, admin_router, payment_router
+from user_handler import user_router
+from admin_handler import admin_router
+from payment_handler import payment_router
 
 logging.basicConfig(
     level=logging.INFO,
