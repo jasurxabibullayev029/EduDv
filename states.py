@@ -19,7 +19,3 @@ class AdminStates(StatesGroup):
     waiting_video_title = State()
     waiting_video = State()
     waiting_video_course = State()
-    waiting_new_price = State()
-    waiting_course_name = State()
-    waiting_course_description = State()
-    waiting_course_price = State()

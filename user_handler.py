@@ -3,7 +3,6 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from states import RegisterStates
 from keyboards import (
@@ -17,6 +16,7 @@ logger = logging.getLogger(__name__)
 user_router = Router()
 
 
+# ─── /start ───────────────────────────────────────────────────────────────────
 
 @user_router.message(CommandStart())
 async def start_handler(msg: Message, state: FSMContext):
@@ -44,6 +44,7 @@ async def start_handler(msg: Message, state: FSMContext):
         await state.set_state(RegisterStates.waiting_name)
 
 
+# ─── REGISTRATION ─────────────────────────────────────────────────────────────
 
 @user_router.message(RegisterStates.waiting_name)
 async def reg_name(msg: Message, state: FSMContext):
@@ -100,9 +101,10 @@ async def reg_phone_text(msg: Message):
     await msg.answer("❗ Iltimos, tugmani bosib telefon raqamingizni yuboring:", reply_markup=phone_keyboard())
 
 
+# ─── MAIN MENU ────────────────────────────────────────────────────────────────
 
 @user_router.message(F.text == "📚 Kurslar")
-async def courses_menu(msg: Message, state: FSMContext):
+async def courses_menu(msg: Message):
     user = await get_user(msg.from_user.id)
     if not user:
         await msg.answer("❗ Avval ro'yxatdan o'ting. /start")
@@ -110,11 +112,6 @@ async def courses_menu(msg: Message, state: FSMContext):
     if user['is_banned']:
         await msg.answer("🚫 Akkauntingiz bloklangan.")
         return
-
-    # Clear any payment state if user wants to go back to courses
-    current_state = await state.get_state()
-    if current_state:
-        await state.clear()
 
     await msg.answer(
         "📚 <b>Bizning kurslar:</b>\n\nQuyidagilardan birini tanlang:",
@@ -150,13 +147,14 @@ async def my_profile(msg: Message):
 async def contact_info(msg: Message):
     await msg.answer(
         "📞 <b>Bog'lanish ma'lumotlari:</b>\n\n"
-        "👨‍💼 Admin: @jasurdv\n"
-        "📱 Telefon: +998 95 182 22 23\n"
+        "👨‍💼 Admin: @admin_username\n"
+        "📱 Telefon: +998 90 000 00 00\n"
         "🕐 Ish vaqti: 09:00 - 22:00",
         parse_mode="HTML"
     )
 
 
+# ─── COURSE CALLBACKS ─────────────────────────────────────────────────────────
 
 @user_router.callback_query(F.data == "back_courses")
 async def back_to_courses(cb: CallbackQuery):
@@ -182,7 +180,7 @@ async def course_selected(cb: CallbackQuery):
     await cb.message.edit_text(
         f"{course['name']}\n\n{status_text}",
         parse_mode="HTML",
-        reply_markup=course_actions_keyboard(course_key, has_course)
+        reply_markup=course_actions_keyboard(course_key)
     )
 
 
@@ -199,92 +197,3 @@ async def course_info(cb: CallbackQuery):
         parse_mode="HTML",
         reply_markup=back_to_courses_keyboard()
     )
-
-
-@user_router.callback_query(F.data.startswith("videos_"))
-async def view_course_videos(cb: CallbackQuery):
-    course_key = cb.data.split("_", 1)[1]
-    if course_key not in COURSES:
-        await cb.answer("Kurs topilmadi!")
-        return
-
-    has_course = await has_active_course(cb.from_user.id, course_key)
-    if not has_course:
-        await cb.answer("Siz bu kursga yozilmagansiz!")
-        return
-
-    import json
-    import aiosqlite
-    async with aiosqlite.connect("edubot.db") as db:
-        async with db.execute("SELECT videos FROM courses WHERE key=?", (course_key,)) as cur:
-            row = await cur.fetchone()
-    
-    videos = json.loads(row[0] if row and row[0] else "[]")
-    course_name = COURSES[course_key]['name']
-
-    if not videos:
-        await cb.message.edit_text(
-            f"📚 <b>{course_name}</b>\n\n"
-            "❌ Hali bu kursda videolar yo'q.",
-            parse_mode="HTML",
-            reply_markup=back_to_courses_keyboard()
-        )
-        return
-
-    builder = InlineKeyboardBuilder()
-    for i, video in enumerate(videos):
-        title = video.get('title', f'Video {i+1}')
-        builder.button(text=f"🎬 {title}", callback_data=f"play_{course_key}_{i}")
-    builder.button(text="🔙 Orqaga", callback_data="back_courses")
-    builder.adjust(1)
-
-    total_duration = sum(v.get('duration', 0) for v in videos)
-    minutes = total_duration // 60
-
-    await cb.message.edit_text(
-        f"📚 <b>{course_name}</b>\n"
-        f"🎬 Jami: <b>{len(videos)} ta dars</b> ({minutes} daqiqa)\n\n"
-        f"Darsni tanlang:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-
-
-@user_router.callback_query(F.data.startswith("play_"))
-async def play_video(cb: CallbackQuery):
-    parts = cb.data.split("_")
-    course_key = parts[1]
-    video_index = int(parts[2])
-
-    has_course = await has_active_course(cb.from_user.id, course_key)
-    if not has_course:
-        await cb.answer("Siz bu kursga yozilmagansiz!")
-        return
-
-    import json
-    import aiosqlite
-    async with aiosqlite.connect("edubot.db") as db:
-        async with db.execute("SELECT videos FROM courses WHERE key=?", (course_key,)) as cur:
-            row = await cur.fetchone()
-    
-    videos = json.loads(row[0] if row and row[0] else "[]")
-    
-    if video_index >= len(videos):
-        await cb.answer("Video topilmadi!")
-        return
-
-    video = videos[video_index]
-    video_title = video.get('title', f'Video {video_index + 1}')
-    video_file_id = video.get('file_id')
-    course_name = COURSES[course_key]['name']
-
-    if video_file_id:
-        await cb.message.answer_video(
-            video_file_id,
-            caption=f"📚 <b>{course_name}</b>\n🎬 <b>{video_title}</b>",
-            parse_mode="HTML"
-        )
-    else:
-        await cb.answer("Video fayli topilmadi!")
-    
-    await cb.answer()

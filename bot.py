@@ -4,10 +4,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
-from database import init_db, sync_courses_to_db
-from user_handler import user_router
-from admin_handler import admin_router
-from payment_handler import payment_router
+from database import init_db
+from handlers import user_router, admin_router, payment_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 async def main():
     await init_db()
-    await sync_courses_to_db()
 
     bot = Bot(token=BOT_TOKEN)
     storage = MemoryStorage()

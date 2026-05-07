@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 from states import PaymentStates
-from keyboards import back_to_courses_keyboard, payment_keyboard, courses_keyboard
+from keyboards import back_to_courses_keyboard
 from database import create_payment, get_user, has_active_course, get_course_price
 from config import COURSES, CARD_NUMBER, CARD_OWNER, ADMIN_ID
 
@@ -54,7 +54,7 @@ async def buy_course(cb: CallbackQuery, state: FSMContext):
         f"✅ To'lov qilgandan so'ng <b>chek (screenshot)</b> yuboring.\n"
         f"⚠️ <b>Cheksiz to'lov qabul qilinmaydi!</b>",
         parse_mode="HTML",
-        reply_markup=payment_keyboard()
+        reply_markup=back_to_courses_keyboard()
     )
 
 
@@ -119,21 +119,10 @@ async def receive_check(msg: Message, state: FSMContext, bot: Bot):
     )
 
 
-@payment_router.callback_query(F.data == "cancel_payment")
-async def cancel_payment(cb: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await cb.message.edit_text(
-        "❌ To'lov bekor qilindi.\n\n"
-        "📚 Kurslar menyusiga qaytdingiz:",
-        reply_markup=courses_keyboard()
-    )
-
-
 @payment_router.message(PaymentStates.waiting_check)
 async def wrong_check_format(msg: Message):
     await msg.answer(
         "❗ Iltimos, to'lov chekini <b>rasm (screenshot)</b> ko'rinishida yuboring!\n\n"
-        "📸 To'lov ekranini suratga olib yuboring.\n"
-        "🔙 Yoki '🔙 Kurslarga qaytish' tugmasini bosing.",
+        "📸 To'lov ekranini suratga olib yuboring.",
         parse_mode="HTML"
     )

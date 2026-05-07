@@ -29,12 +29,9 @@ def courses_keyboard():
     return builder.as_markup()
 
 
-def course_actions_keyboard(course_key: str, has_course: bool = False):
+def course_actions_keyboard(course_key: str):
     builder = InlineKeyboardBuilder()
-    if has_course:
-        builder.button(text="🎬 Darslarni ko'rish", callback_data=f"videos_{course_key}")
-    else:
-        builder.button(text="💳 Kurs sotib olish", callback_data=f"buy_{course_key}")
+    builder.button(text="💳 Kurs sotib olish", callback_data=f"buy_{course_key}")
     builder.button(text="❓ Nima bu kurs?", callback_data=f"info_{course_key}")
     builder.button(text="🔙 Orqaga", callback_data="back_courses")
     builder.adjust(1)
@@ -47,19 +44,13 @@ def back_to_courses_keyboard():
     return builder.as_markup()
 
 
-def payment_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔙 Kurslarga qaytish", callback_data="cancel_payment")
-    builder.adjust(1)
-    return builder.as_markup()
-
-
 def cancel_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.button(text="❌ Bekor qilish")
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
+# ─── ADMIN KEYBOARDS ──────────────────────────────────────────────────────────
 
 def admin_main_keyboard():
     builder = InlineKeyboardBuilder()
@@ -67,10 +58,8 @@ def admin_main_keyboard():
     builder.button(text="📊 Statistika", callback_data="admin_stats")
     builder.button(text="💰 Kutayotgan to'lovlar", callback_data="admin_payments")
     builder.button(text="📚 Kurslarni boshqarish", callback_data="admin_courses")
-    builder.button(text="➕ Yangi kurs qo'shish", callback_data="admin_add_course")
-    builder.button(text="🗑 Kurs o'chirish", callback_data="admin_delete_course")
     builder.button(text="🔐 Parolni o'zgartirish", callback_data="admin_change_pass")
-    builder.adjust(2, 1, 1, 1, 2)
+    builder.adjust(2, 1, 1, 1)
     return builder.as_markup()
 
 
@@ -90,7 +79,7 @@ def admin_payment_keyboard(payment_id: int, user_id: int, course_key: str):
 
 def admin_users_keyboard(users):
     builder = InlineKeyboardBuilder()
-    for user in users[:20]: 
+    for user in users[:20]:  # Max 20 ta ko'rsatamiz
         name = user['full_name'] or f"ID:{user['user_id']}"
         builder.button(text=f"👤 {name}", callback_data=f"auser_{user['user_id']}")
     builder.button(text="🔙 Admin panel", callback_data="admin_back")
@@ -136,7 +125,6 @@ def admin_courses_keyboard():
 
 def admin_course_manage_keyboard(course_key: str):
     builder = InlineKeyboardBuilder()
-    builder.button(text="💰 Narxni tahrirlash", callback_data=f"editprice_{course_key}")
     builder.button(text="🎬 Video qo'shish", callback_data=f"addvideo_{course_key}")
     builder.button(text="📋 Videolarni boshqarish", callback_data=f"listvideos_{course_key}")
     builder.button(text="🔙 Orqaga", callback_data="admin_courses")
@@ -150,12 +138,14 @@ def admin_videos_list_keyboard(course_key: str, videos: list):
     for i, v in enumerate(videos):
         title = v.get('title', f'Video {i+1}')
         date = v.get('added_at', '')
+        # Video nomini ko'rsatish (truncate if long)
         display = f"🎬 {i+1}. {title[:25]}" + (f" ({date})" if date else "")
         builder.button(text=display, callback_data=f"vidinfo_{course_key}_{i}")
         builder.button(text="🗑 O'chirish", callback_data=f"delvideo_{course_key}_{i}")
     builder.button(text="➕ Video qo'shish", callback_data=f"addvideo_{course_key}")
     builder.button(text="🔙 Orqaga", callback_data=f"admincourse_{course_key}")
-    builder.adjust(2)  
+    builder.adjust(2)  # har qator: [video nomi] [o'chirish]
+    # oxirgi 2 tugma alohida qator
     return builder.as_markup()
 
 

@@ -5,7 +5,6 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from states import AdminStates
 from keyboards import (
@@ -19,22 +18,37 @@ from database import (
     get_all_users, get_user, delete_user, ban_user, unban_user,
     get_user_courses, activate_user_course, deactivate_user_course,
     get_payment, update_payment_status, activate_user_course,
-    get_pending_payments, get_today_revenue, get_monthly_revenue, get_total_users,
-    update_course_price, get_course_price, create_course, delete_course, get_all_courses_from_db
+    get_pending_payments, get_today_revenue, get_monthly_revenue, get_total_users
 )
 from config import COURSES, ADMIN_ID
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
 
+# Parol o'zgartirish urinishlari soni
 password_change_attempts = {}
 
 
+async def safe_edit_message(message, text, reply_markup=None, parse_mode=None):
+    """Safely edit a message without TelegramBadRequest errors"""
+    try:
+        await message.edit_text(
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+    except:
+        pass
+
+
+# ─── ADMIN LOGIN ──────────────────────────────────────────────────────────────
 
 @admin_router.message(Command("jasur"))
 async def admin_enter(msg: Message, state: FSMContext):
+    # Faqat Telegramdan kirish
     admin_state = await get_admin_state()
 
+    # Ban tekshirish
     if admin_state['ban_until']:
         ban_time = datetime.fromisoformat(admin_state['ban_until'])
         if datetime.now() < ban_time:
@@ -97,16 +111,19 @@ async def check_admin_password(msg: Message, state: FSMContext):
             )
 
 
+# ─── ADMIN PANEL NAVIGATSIYA ──────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_back")
 async def admin_back(cb: CallbackQuery):
-    await cb.message.edit_text(
+    await safe_edit_message(
+        cb.message,
         "🏠 <b>Admin Panel</b>\n\nBo'limni tanlang:",
-        parse_mode="HTML",
-        reply_markup=admin_main_keyboard()
+        reply_markup=admin_main_keyboard(),
+        parse_mode="HTML"
     )
 
 
+# ─── STATISTIKA ───────────────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_stats")
 async def admin_stats(cb: CallbackQuery):
@@ -127,21 +144,24 @@ async def admin_stats(cb: CallbackQuery):
     )
 
 
+# ─── FOYDALANUVCHILAR ─────────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_users")
 async def admin_users(cb: CallbackQuery):
     users = await get_all_users()
     if not users:
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb.message,
             "👥 Hali foydalanuvchi yo'q.",
             reply_markup=admin_back_keyboard()
         )
         return
 
-    await cb.message.edit_text(
+    await safe_edit_message(
+        cb.message,
         f"👥 <b>Foydalanuvchilar</b> ({len(users)} ta)\n\nBirini tanlang:",
-        parse_mode="HTML",
-        reply_markup=admin_users_keyboard(users)
+        reply_markup=admin_users_keyboard(users),
+        parse_mode="HTML"
     )
 
 
@@ -216,6 +236,8 @@ async def admin_delete_user(cb: CallbackQuery):
     )
 
 
+# ─── USER COURSE MANAGEMENT ───────────────────────────────────────────────────
+
 @admin_router.callback_query(F.data.startswith("usercourses_"))
 async def admin_user_courses(cb: CallbackQuery):
     user_id = int(cb.data.split("_")[1])
@@ -262,6 +284,7 @@ async def toggle_user_course(cb: CallbackQuery, bot: Bot):
     )
 
 
+# ─── TO'LOV BOSHQARUVI ────────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_payments")
 async def admin_payments_list(cb: CallbackQuery):
@@ -339,6 +362,7 @@ async def reject_payment(cb: CallbackQuery, bot: Bot):
         logger.error(f"User ga xabar yuborishda xatolik: {e}")
 
 
+# ─── KURSLAR BOSHQARUVI ───────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_courses")
 async def admin_courses(cb: CallbackQuery):
@@ -357,21 +381,8 @@ async def admin_course_detail(cb: CallbackQuery):
         await cb.answer("Kurs topilmadi!")
         return
 
-    db_price = await get_course_price(course_key)
-    if db_price:
-        current_price = db_price
-    else:
-        description = course.get('description', '')
-        current_price = "50,000 so'm/oy" 
-        for line in description.split('\n'):
-            if '💰 Narxi:' in line:
-                current_price = line.split('💰 Narxi:')[1].strip()
-                break
-
     await cb.message.edit_text(
-        f"📚 <b>{course['name']}</b>\n\n"
-        f"💰 Joriy narx: <b>{current_price}</b>\n\n"
-        f"Nima qilmoqchisiz?",
+        f"📚 <b>{course['name']}</b>\n\nNima qilmoqchisiz?",
         parse_mode="HTML",
         reply_markup=admin_course_manage_keyboard(course_key)
     )
@@ -402,29 +413,7 @@ async def _save_course_videos(course_key: str, videos: list):
         await db.commit()
 
 
-
-@admin_router.callback_query(F.data.startswith("editprice_"))
-async def edit_price_start(cb: CallbackQuery, state: FSMContext):
-    course_key = cb.data.split("_", 1)[1]
-    await state.update_data(price_course_key=course_key)
-    await state.set_state(AdminStates.waiting_new_price)
-    course = COURSES.get(course_key, {})
-    
-    description = course.get('description', '')
-    current_price = "50,000 so'm/oy" 
-    for line in description.split('\n'):
-        if '💰 Narxi:' in line:
-            current_price = line.split('💰 Narxi:')[1].strip()
-            break
-    
-    await cb.message.edit_text(
-        f"💰 <b>{course.get('name', course_key)}</b> — Narxni tahrirlash\n\n"
-        f"Joriy narx: <b>{current_price}</b>\n\n"
-        f"<b>Yangi narxni kiriting:</b>\n"
-        f"<i>(masalan: 450,000 so'm/oy)</i>",
-        parse_mode="HTML"
-    )
-
+# ─── VIDEO QO'SHISH ───────────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data.startswith("addvideo_"))
 async def add_video_start(cb: CallbackQuery, state: FSMContext):
@@ -440,66 +429,11 @@ async def add_video_start(cb: CallbackQuery, state: FSMContext):
     )
 
 
-@admin_router.message(AdminStates.waiting_new_price)
-async def receive_new_price(msg: Message, state: FSMContext):
-    if msg.text == "❌ Bekor qilish":
-        await state.clear()
-        await msg.answer("❌ Bekor qilindi.", reply_markup=admin_main_keyboard())
-        return
-    
-    new_price = msg.text.strip()
-    if not new_price:
-        await msg.answer("❌ Iltimos, narxni kiriting!")
-        return
-    
-    data = await state.get_data()
-    course_key = data.get("price_course_key")
-    
-    if not course_key:
-        await msg.answer("❌ Xatolik! Qaytadan urinib ko'ring.")
-        await state.clear()
-        return
-    
-    course = COURSES.get(course_key)
-    if not course:
-        await msg.answer("❌ Kurs topilmadi!")
-        await state.clear()
-        return
-    
-
-    await update_course_price(course_key, new_price)
-    
-    old_description = course.get('description', '')
-    lines = old_description.split('\n')
-    new_description = []
-    
-    for line in lines:
-        if '💰 Narxi:' in line:
-            new_description.append(f"💰 Narxi: {new_price}")
-        else:
-            new_description.append(line)
-    
-    course['description'] = '\n'.join(new_description)
-    
-    await state.clear()
-    course_name = course.get('name', course_key)
-    await msg.answer(
-        f"✅ <b>Narx muvaffaqiyatli o'zgartirildi!</b>\n\n"
-        f"📚 Kurs: <b>{course_name}</b>\n"
-        f"💰 Yangi narx: <b>{new_price}</b>",
-        parse_mode="HTML",
-        reply_markup=admin_back_keyboard()
-    )
-
-
 @admin_router.message(AdminStates.waiting_video_title)
 async def receive_video_title(msg: Message, state: FSMContext):
     if msg.text == "❌ Bekor qilish":
         await state.clear()
         await msg.answer("❌ Bekor qilindi.", reply_markup=admin_main_keyboard())
-        return
-    if not msg.text:
-        await msg.answer("❌ Iltimos, faqat matn yuboring!")
         return
     await state.update_data(video_title=msg.text.strip())
     await msg.answer(
@@ -544,6 +478,7 @@ async def wrong_video_format(msg: Message):
     await msg.answer("❗ Iltimos, <b>video fayl</b> yuboring (mp4, avi va h.k.):", parse_mode="HTML")
 
 
+# ─── VIDEO RO'YXATI VA O'CHIRISH ──────────────────────────────────────────────
 
 @admin_router.callback_query(F.data.startswith("listvideos_"))
 async def list_videos(cb: CallbackQuery):
@@ -636,6 +571,7 @@ async def delete_video(cb: CallbackQuery):
         )
 
 
+# ─── PAROL O'ZGARTIRISH ───────────────────────────────────────────────────────
 
 @admin_router.callback_query(F.data == "admin_change_pass")
 async def change_pass_start(cb: CallbackQuery, state: FSMContext):
@@ -672,169 +608,6 @@ async def receive_new_password(msg: Message, state: FSMContext):
     await state.update_data(new_password=new_pass)
     await msg.answer("🔁 Yangi parolni tasdiqlash uchun qaytadan kiriting:")
     await state.set_state(AdminStates.waiting_new_password_confirm)
-
-
-@admin_router.callback_query(F.data == "admin_add_course")
-async def add_course_start(cb: CallbackQuery, state: FSMContext):
-    await state.set_state(AdminStates.waiting_course_name)
-    await cb.message.edit_text(
-        "➕ <b>Yangi kurs qo'shish</b>\n\n"
-        f"<b>1-qadam:</b> Kurs kalit nomini kiriting (inglizcha):\n"
-        f"<i>(masalan: mobile_dev, python_basic)</i>",
-        parse_mode="HTML"
-    )
-
-
-@admin_router.message(AdminStates.waiting_course_name)
-async def receive_course_name(msg: Message, state: FSMContext):
-    if msg.text == "❌ Bekor qilish":
-        await state.clear()
-        await msg.answer("❌ Bekor qilindi.", reply_markup=admin_main_keyboard())
-        return
-    
-    course_key = msg.text.strip().lower().replace(" ", "_")
-    if not course_key or len(course_key) < 3:
-        await msg.answer("❌ Iltimos, kamida 3 ta belgidan iborat kalit nomi kiriting:")
-        return
-    
-    if course_key in COURSES:
-        await msg.answer(f"❌ '{course_key}' kaliti allaqachon mavjud! Boshqa nom tanlang:")
-        return
-    
-    await state.update_data(course_key=course_key)
-    await state.set_state(AdminStates.waiting_course_description)
-    await msg.answer(
-        f"✅ Kalit: <b>{course_key}</b>\n\n"
-        f"<b>2-qadam:</b> Kurs nomini kiriting:\n"
-        f"<i>(masalan: 📱 Mobil Dasturlash)</i>",
-        parse_mode="HTML"
-    )
-
-
-@admin_router.message(AdminStates.waiting_course_description)
-async def receive_course_description(msg: Message, state: FSMContext):
-    if msg.text == "❌ Bekor qilish":
-        await state.clear()
-        await msg.answer("❌ Bekor qilindi.", reply_markup=admin_main_keyboard())
-        return
-    
-    course_name = msg.text.strip()
-    if not course_name or len(course_name) < 5:
-        await msg.answer("❌ Iltimos, to'liq kurs nomi kiriting:")
-        return
-    
-    await state.update_data(course_name=course_name)
-    await state.set_state(AdminStates.waiting_course_price)
-    await msg.answer(
-        f"✅ Nomi: <b>{course_name}</b>\n\n"
-        f"<b>3-qadam:</b> Kurs narxini kiriting:\n"
-        f"<i>(masalan: 150,000 so'm/oy, 500,000 so'm)</i>",
-        parse_mode="HTML"
-    )
-
-
-
-
-@admin_router.message(AdminStates.waiting_course_price)
-async def receive_course_price(msg: Message, state: FSMContext):
-    if msg.text == "❌ Bekor qilish":
-        await state.clear()
-        await msg.answer("❌ Bekor qilindi.", reply_markup=admin_main_keyboard())
-        return
-    
-    price = msg.text.strip()
-    if not price:
-        await msg.answer("❌ Iltimos, kurs narxini kiriting:")
-        return
-    
-    data = await state.get_data()
-    course_key = data.get("course_key")
-    course_name = data.get("course_name")
-    
-    description = (
-        f"{course_name} kursi.\n\n"
-        f"📚 Nima o'rganasiz:\n"
-        f"• Kurs bo'yicha ma'lumotlar\n"
-        f"• Amaliy mashqlar\n"
-        f"• Loyihalar\n\n"
-        f"💰 Narxi: {price}"
-    )
-    
-    await create_course(course_key, course_name, description, price)
-    
-    await state.clear()
-    await msg.answer(
-        f"✅ <b>Kurs muvaffaqiyatli qo'shildi!</b>\n\n"
-        f"🔑 Kalit: <b>{course_key}</b>\n"
-        f"📚 Nomi: <b>{course_name}</b>\n"
-        f"💰 Narx: <b>{price}</b>\n\n"
-        f"Endi kurs narxini o'zgartirishingiz mumkin!",
-        parse_mode="HTML",
-        reply_markup=admin_back_keyboard()
-    )
-
-
-@admin_router.callback_query(F.data == "admin_delete_course")
-async def delete_course_start(cb: CallbackQuery):
-    courses = await get_all_courses_from_db()
-    if not courses:
-        await cb.answer("O'chirish uchun kurs topilmadi!")
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for course in courses:
-        builder.button(
-            text=f"🗑 {course['name']}", 
-            callback_data=f"delete_confirm_{course['key']}"
-        )
-    builder.button(text="🔙 Orqaga", callback_data="admin_back")
-    builder.adjust(1)
-    
-    await cb.message.edit_text(
-        "🗑 <b>Kurs o'chirish</b>\n\n"
-        "O'chirish uchun kursni tanlang:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-
-
-@admin_router.callback_query(F.data.startswith("delete_confirm_"))
-async def delete_course_confirm(cb: CallbackQuery):
-    course_key = cb.data.split("_", 2)[2]
-    course = COURSES.get(course_key)
-    
-    if not course:
-        await cb.answer("Kurs topilmadi!")
-        return
-    
-    await delete_course(course_key)
-    await cb.answer(f"✅ {course['name']} o'chirildi!")
-    
-    courses = await get_all_courses_from_db()
-    if not courses:
-        await cb.message.edit_text(
-            "🗑 <b>Barcha kurslar o'chirildi!</b>\n\n"
-            "Yangi kurs qo'shishingiz mumkin.",
-            parse_mode="HTML",
-            reply_markup=admin_back_keyboard()
-        )
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for remaining_course in courses:
-        builder.button(
-            text=f"🗑 {remaining_course['name']}", 
-            callback_data=f"delete_confirm_{remaining_course['key']}"
-        )
-    builder.button(text="🔙 Orqaga", callback_data="admin_back")
-    builder.adjust(1)
-    
-    await cb.message.edit_text(
-        f"✅ <b>{course['name']}</b> o'chirildi!\n\n"
-        "Qolgan kurslar:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
 
 
 @admin_router.message(AdminStates.waiting_new_password_confirm)
