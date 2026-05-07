@@ -9,7 +9,7 @@ from keyboards import (
     main_menu_keyboard, phone_keyboard, courses_keyboard,
     course_actions_keyboard, back_to_courses_keyboard
 )
-from database import get_user, create_user, get_user_courses, has_active_course
+from database import get_user, create_user, get_user_courses, has_active_course, get_course_videos
 from config import COURSES
 
 logger = logging.getLogger(__name__)
@@ -184,7 +184,7 @@ async def course_selected(cb: CallbackQuery):
     await cb.message.edit_text(
         f"{course['name']}\n\n{status_text}",
         parse_mode="HTML",
-        reply_markup=course_actions_keyboard(course_key)
+        reply_markup=course_actions_keyboard(course_key, has_course=has_course)
     )
 
 
@@ -201,3 +201,38 @@ async def course_info(cb: CallbackQuery):
         parse_mode="HTML",
         reply_markup=back_to_courses_keyboard()
     )
+
+
+@user_router.callback_query(F.data.startswith("watch_"))
+async def watch_course_videos(cb: CallbackQuery):
+    course_key = cb.data.split("_", 1)[1]
+    if course_key not in COURSES:
+        await cb.answer("Kurs topilmadi!")
+        return
+
+    if not await has_active_course(cb.from_user.id, course_key):
+        await cb.answer("❗ Avval kursni sotib oling.", show_alert=True)
+        return
+
+    videos = await get_course_videos(course_key)
+    if not videos:
+        await cb.answer("Hozircha videolar qo'shilmagan.", show_alert=True)
+        return
+
+    await cb.message.answer(
+        f"🎬 <b>{COURSES[course_key]['name']}</b>\n"
+        f"Jami darslar: <b>{len(videos)} ta</b>\n\n"
+        f"Videolar yuborilmoqda...",
+        parse_mode="HTML"
+    )
+
+    for idx, video in enumerate(videos, start=1):
+        file_id = video.get("file_id")
+        if not file_id:
+            continue
+        title = video.get("title", f"Dars {idx}")
+        await cb.message.answer_video(
+            video=file_id,
+            caption=f"📘 <b>{title}</b>\nDars {idx}/{len(videos)}",
+            parse_mode="HTML"
+        )

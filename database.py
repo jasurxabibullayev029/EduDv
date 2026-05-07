@@ -1,5 +1,6 @@
 import aiosqlite
 import logging
+import json
 from datetime import datetime
 from config import COURSES
 
@@ -306,6 +307,19 @@ async def get_all_courses_from_db():
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM courses ORDER BY rowid DESC") as cur:
             return await cur.fetchall()
+
+
+async def get_course_videos(course_key: str) -> list:
+    """Get saved course videos list from DB."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT videos FROM courses WHERE key=?", (course_key,)) as cur:
+            row = await cur.fetchone()
+    if not row or not row[0]:
+        return []
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return []
 
 
 async def get_total_users():

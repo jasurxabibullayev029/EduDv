@@ -29,9 +29,12 @@ def courses_keyboard():
     return builder.as_markup()
 
 
-def course_actions_keyboard(course_key: str):
+def course_actions_keyboard(course_key: str, has_course: bool = False):
     builder = InlineKeyboardBuilder()
-    builder.button(text="💳 Kurs sotib olish", callback_data=f"buy_{course_key}")
+    if has_course:
+        builder.button(text="🎬 Darslarni ko'rish", callback_data=f"watch_{course_key}")
+    else:
+        builder.button(text="💳 Kurs sotib olish", callback_data=f"buy_{course_key}")
     builder.button(text="❓ Nima bu kurs?", callback_data=f"info_{course_key}")
     builder.button(text="🔙 Orqaga", callback_data="back_courses")
     builder.adjust(1)
