@@ -47,15 +47,6 @@ def back_to_courses_keyboard():
     return builder.as_markup()
 
 
-def course_videos_keyboard(course_key: str, videos: list):
-    builder = InlineKeyboardBuilder()
-    for idx, _ in enumerate(videos, start=1):
-        builder.button(text=f"📺 {idx}-qism", callback_data=f"watchpart_{course_key}_{idx-1}")
-    builder.button(text="🔙 Orqaga", callback_data=f"course_{course_key}")
-    builder.adjust(2)
-    return builder.as_markup()
-
-
 def cancel_keyboard():
     builder = ReplyKeyboardBuilder()
     builder.button(text="❌ Bekor qilish")
