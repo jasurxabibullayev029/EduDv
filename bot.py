@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
@@ -43,7 +44,10 @@ async def main():
     await init_db()
     health_server = await _healthcheck_server()
 
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(protect_content=True)
+    )
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
 

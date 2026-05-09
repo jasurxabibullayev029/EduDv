@@ -1,9 +1,10 @@
 import logging
 import json
 import re
+import os
 from datetime import datetime, timedelta
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
@@ -22,6 +23,7 @@ from database import (
     get_pending_payments, get_today_revenue, get_monthly_revenue, get_total_users,
     create_course, delete_course, update_course_price, get_course_price
 )
+from database import DB_PATH
 from config import COURSES, ADMIN_ID
 
 logger = logging.getLogger(__name__)
@@ -134,6 +136,19 @@ async def admin_back(cb: CallbackQuery):
         reply_markup=admin_main_keyboard(),
         parse_mode="HTML"
     )
+
+
+@admin_router.callback_query(F.data == "admin_db_backup")
+async def admin_db_backup(cb: CallbackQuery):
+    if not os.path.exists(DB_PATH):
+        await cb.answer("DB file topilmadi!", show_alert=True)
+        return
+
+    await cb.message.answer_document(
+        document=FSInputFile(DB_PATH),
+        caption="🗄 Joriy ma'lumotlar bazasi fayli (edubot.db)"
+    )
+    await cb.answer("DB file yuborildi ✅")
 
 
 # ─── STATISTIKA ───────────────────────────────────────────────────────────────

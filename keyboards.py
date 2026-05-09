@@ -70,8 +70,9 @@ def admin_main_keyboard():
     builder.button(text="📊 Statistika", callback_data="admin_stats")
     builder.button(text="💰 Kutayotgan to'lovlar", callback_data="admin_payments")
     builder.button(text="📚 Kurslarni boshqarish", callback_data="admin_courses")
+    builder.button(text="🗄 DB fileni yuklash", callback_data="admin_db_backup")
     builder.button(text="🔐 Parolni o'zgartirish", callback_data="admin_change_pass")
-    builder.adjust(2, 1, 1, 1)
+    builder.adjust(2, 1, 1, 1, 1)
     return builder.as_markup()
 
 
